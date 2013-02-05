@@ -13,7 +13,7 @@ This package uses Ubuntu 12.10 (Quantal) as its base.  Download the distribution
 package [here](http://rcn-ee.net/deb/rootfs/quantal/ubuntu-12.10-r2-minimal-armhf-2012-11-29.tar.xz).
 Helpful instructions [here](http://embeddedprogrammer.blogspot.com/2012/10/beaglebone-installing-ubuntu-1210.html).
 
-Setup the Beaglebone as you wish, but remember that **This software assumes the
+Setup the Beaglebone as you wish, but remember that **this software assumes the
 presence of a user named "ubuntu" with sudo privileges.**
 
 Once installed, extract rootfs.tar.bz2 to the root of your SD card.  Then login
