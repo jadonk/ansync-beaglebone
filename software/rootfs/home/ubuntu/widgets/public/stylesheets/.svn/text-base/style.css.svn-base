@@ -1,0 +1,109 @@
+/* Classes */
+.hidden {
+    display: none;
+}
+
+html {
+    overflow: auto;
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    width: 100%;
+    background: #DDDDDD;
+    min-width: 600px;
+    font-size: 90%;
+    font-family: Lucida Grande, Lucida Sans, Arial, sans-serif;
+    height: 100%;
+}
+
+img {
+    margin:10px 0 5px;
+}
+
+img.logo {
+    -webkit-border-radius: 10px 0px 0px 10px;
+    border-radius: 10px 0px 0px 10px;
+    border-top: 2px solid #000000;
+    border-left: 2px solid #000000;
+    border-bottom: 2px solid #000000;
+    border-right: none;
+    float: right;
+    padding: 10px;
+    background: #FFFFFF;
+    margin-top: auto;
+}
+
+div#leftColumn {
+    width: 15%;
+    max-width: 15%;
+    min-height: 100%;
+    float: left;
+}
+
+div#rightColumn {
+    width: 0;
+    max-width: 15%;
+    float: right;
+}
+
+div#content {
+    background: #FFFFFF;
+    max-width: 70%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-top: 30px;
+    padding-bottom: 30px;
+    border: 2px solid #000000;
+    min-height: 100%;
+    -webkit-border-radius: 0px 10px 10px 10px;
+    border-radius: 0px 10px 10px 10px;
+}
+
+table.zebra {
+    border-collapse: collapse;
+    border: 1px solid #29365E;
+    width: 90%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+table.zebra tr {
+    border: 1px solid #29365E;
+    background: #FFFFFF;
+}
+
+table.zebra tr.alt {
+    border: 1px solid #29365E;
+    background: #EBF5FF;
+}
+
+table.zebra tr:hover {
+    background: #B8E7FF;
+}
+
+table.zebra td {
+    padding: 10px;
+    text-align: center;
+    border: 1px solid #29365E;
+}
+
+table.zebra td.chNameCell {
+
+}
+
+table.zebra td.chRemCell {
+
+}
+
+table.zebra td.chRemCell input {
+    width: 80%;
+}
+
+td.endCell {
+    padding: 0;
+    background-color: #B2CBD9;
+}

@@ -1,0 +1,45 @@
+extends layout
+
+block content
+  div#leftColumn
+    a(href="http://www.ansync.com", target="blank")
+      img.logo(src="/images/ansync_logo_100.png")
+  div#content
+    div#channels
+      table.zebra
+        thead
+          tr.header
+            td.endCell
+              h3 Name
+            td.endCell
+              h3 Power
+            td.endCell
+              h3 Notes
+        tfoot
+          tr.footer
+            td.endCell
+              h3 Name
+            td.endCell
+              h3 Power
+            td.endCell
+              h3 Notes
+        tbody
+          td.chNameCell
+            h2 AN2012
+          td.chCbCell
+            //div.an_slider(data-channel="2", data-model="AN2012")
+          td.chRemCell
+            div.an_channel_toggle(id="cb_channel_a", data-channel="1 1 2 3 4", data-model="AN2006", data-mode="radio")
+            div.an_channel_toggle(id="cb_channel_b", data-channel="1 2 3 4", data-model="AN2006", data-mode="radio")
+            div.an_channel_toggle(id="cb_channel_c", data-channel="1", data-model="AN2006", data-mode="momentary")
+            //div.an_channel_analog_out(id="aio_channel_1", data-channel="2", data-model="AN2012")
+          //
+            - for (var i = 0; i < 10; i++)
+              tr
+                td.chNameCell
+                  h2 Channel #{i + 1}
+                td.chCbCell
+                  div.an_channel_toggle(id="cb_channel_#{i + 1}", data-channel="#{i + 1}", data-model="AN2006", data-label="Channel #{i}")
+                td.chRemCell
+                  div.an_channel_digital_out(id="dio_channel_#{i + 1}", data-channel="#{i + 1}", data-model="AN2006")
+  div#rightColumn

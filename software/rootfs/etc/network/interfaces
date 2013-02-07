@@ -1,0 +1,18 @@
+auto lo
+iface lo inet loopback
+
+# The primary network interface
+auto eth0
+iface eth0 inet dhcp
+# Example to keep MAC address between reboots
+#hwaddress ether DE:AD:BE:EF:CA:FE
+
+# WiFi Example
+auto wlan0
+iface wlan0 inet static
+    address 192.168.1.22
+    netmask 255.255.255.0
+    gateway 192.168.1.254
+    broadcast 192.168.1.255
+    wpa-ssid "ansync_ether"
+    wpa-psk  "ansync_is_cool"
