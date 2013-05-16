@@ -1,0 +1,42 @@
+#!/bin/sh -e
+
+PRISM2_SREC=/usr/sbin/prism2_srec
+
+if [ ! -x $PRISM2_SREC ]; then
+	exit 0
+fi
+
+load_primary()
+{
+	if [ ! -d /proc/net/hostap/$1 ]; then
+		echo "Host AP driver data for device $1 not found in procfs."
+		return 1
+	fi
+
+	if ! grep -q no_pri=1 /proc/net/hostap/$1/debug; then
+		echo "Downloading primary firmware $2 to interface $1"
+		$PRISM2_SREC -gs $1 $2
+		$PRISM2_SREC -gp $1 $2
+	fi
+
+	return 0
+}
+
+load_secondary()
+{
+	if ! grep -q pri_only=1 /proc/net/hostap/$1/debug; then
+		echo "Downloading secondary (station) firmware $2 to interface $1"
+		$PRISM2_SREC -rp $1 $2
+	fi
+
+	return 0
+}
+
+if [ -n "$IF_FW_PRIMARY" ]; then
+	load_primary "$IFACE" "$IF_FW_PRIMARY"
+fi
+
+if [ -n "$IF_FW_SECONDARY" ]; then
+	load_secondary "$IFACE" "$IF_FW_SECONDARY"
+fi
+

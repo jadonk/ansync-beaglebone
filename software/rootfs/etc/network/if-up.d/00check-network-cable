@@ -1,0 +1,152 @@
+#!/bin/sh
+# Check the link status of an ethernet interface
+# This script should be installed in /etc/network/if-pre-up.d/
+#
+# You can use this script to solve bug #120382 
+# ('ifup should (optionally) check for link before configuring the interface.')
+# if you configure ABORT_NO_LINK to 'yes' in /etc/default/network-test
+# since this will make the script abort if the interface does not have
+# any link.
+#
+# It can also be used as a standalone script by setting up
+# its environment:
+#    IFACE=eth0  check-network-cable
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program; if not, write to the Free Software
+#   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#  
+# You can also find a copy of the GNU General Public License at
+# http://www.gnu.org/licenses/licenses.html#TOCLGPL
+#
+
+# Read system default file
+[ -r /etc/default/network-test ] && . /etc/default/network-test
+
+# Defaults
+ETHTOOL=/sbin/ethtool
+[ ! -x "$ETHTOOL" ] && [ -x "/usr/sbin/ethtool" ] && ETHTOOL=/usr/sbin/ethtool
+MIITOOL=/sbin/mii-tool
+DO_SYSLOG=${DO_SYSLOG:-yes}
+ABORT_NO_LINK=i${ABORT_NO_LINK:-no}
+VERBOSITY=${VERBOSITY:-0}
+
+if [ "$DO_SYSLOG" = "yes" ] ; then
+	OUTPUT="logger -i -p daemon.err -s"
+else
+	OUTPUT="echo"
+fi
+
+# Set our locale environment, just in case any of the tools get translated
+LC_ALL=C
+export LC_ALL
+
+check_status_miitool () {
+	local status=0
+	if $MIITOOL $IFACE 2>&1| grep -q "no link"; then
+		status=1
+	fi
+	return $status
+}
+
+check_status_ethtool () {
+	local status=0
+	local LINK="`$ETHTOOL $IFACE 2>&1| grep \"Link detected\"`"
+	# If ethtool fails to print out the link line we break off
+	# notice that ethtool cannot get the link status out of all
+	# possible network interfaces
+	[ -z "$LINK" ] && return
+	if ! echo $LINK | grep -q "Link detected: yes" ; then
+		status=1
+	fi
+	return $status
+}
+
+check_status_iplink () {
+	local status=0
+        local info=""
+	[ ! -x /sbin/ip ] && return 0
+	info="`/sbin/ip link show $IFACE 2>&1 | grep \"$IFACE:\" `"
+	if echo $info | grep -q "NO-CARRIER" ||
+	   echo $info | grep -q "state DOWN" ||
+	   echo $info | grep -q "state LOWERLAYERDOWN"
+	then
+		status=1
+	fi
+	return $status
+}
+
+check_status() {
+	local status=0
+        local myid="`id -u`"
+	ifconfig $IFACE 2>/dev/null 1>&2
+	if [ $? -ne 0 ] ; then
+		$OUTPUT "ERROR: Interface $IFACE does not seem to be present in the system"
+		return
+	fi
+	# Use ethtool if installed (preferable to mii-tool)
+	# If none are installed (or not running as root) we will test using 'ip link show'
+	if [ -x "$ETHTOOL" ] && [ $myid = 0 ] ; then
+		check_status_ethtool
+		status=$?
+	elif [ -x "$MIITOOL" ] && [ $myid = 0 ]; then
+		check_status_miitool
+		status=$?
+	else
+		check_status_iplink
+		status=$?
+	fi
+	if [ $status -ne 0 ] ; then
+		$OUTPUT "WARNING: Initialising interface $IFACE which does not have link"
+	fi
+	return $status
+}
+
+check_bond_status() {
+	local status=1
+        [ ! -e /sys/class/net/$IFACE/bonding/slaves ] && return 0
+	for slave_iface in `cat /sys/class/net/$IFACE/bonding/slaves`; do
+		# Use "true" to silence slaves.
+		OUTPUT="true" IFACE="$slave_iface" check_status
+		status=$?
+		if [ $status -eq 0 ] ; then
+			# One functional slave will suffice
+			return 0
+		fi
+	done
+	$OUTPUT "WARNING: Initialising bond $IFACE which does not have link on any slave"
+	return $status
+}
+
+if [ -z "$IFACE" ] ; then
+    echo "ERROR: Variable IFACE not set in environment" >&2
+    exit 1
+fi
+
+# Check our IFACE name, if it does not start with eth, bail out
+case "$IFACE" in 
+	eth*) 
+		check_status
+		if [ $? -ne 0 ] && [ "$ABORT_NO_LINK" = "yes" ] ; then
+			exit 1
+		fi
+		;;
+	bond*)
+		check_bond_status
+		if [ $? -ne 0 ] && [ "$ABORT_NO_LINK" = "yes" ] ; then
+			exit 1
+		fi
+		;;
+	*) ;;
+esac
+exit 0

@@ -80,8 +80,8 @@ LIBRARY_FLAGS = {
   },
   'gcc': {
     'all': {
-      'CCFLAGS':      ['$DIALECTFLAGS', '$WARNINGFLAGS'],
-      'CXXFLAGS':     ['-fno-rtti', '-fno-exceptions'],
+      'CCFLAGS':      ['$DIALECTFLAGS', '$WARNINGFLAGS', '-march=armv7l'],
+      'CXXFLAGS':     ['-fno-rtti', '-fno-exceptions' '-march=armv7l'],
     },
     'visibility:hidden': {
       # Use visibility=default to disable this.
@@ -159,12 +159,12 @@ LIBRARY_FLAGS = {
       },
       'armeabi:softfp' : {
         'CPPDEFINES' : ['USE_EABI_HARDFLOAT=0'],
-        'vfp3:on': {
-          'CPPDEFINES' : ['CAN_USE_VFP_INSTRUCTIONS']
-        },
-        'simulator:none': {
-          'CCFLAGS':     ['-mfloat-abi=softfp'],
-        }
+#        'vfp3:on': {
+#          'CPPDEFINES' : ['CAN_USE_VFP_INSTRUCTIONS']
+#        },
+#        'simulator:none': {
+#          'CCFLAGS':     ['-mfloat-abi=softfp'],
+#        }
       },
       'armeabi:hard' : {
         'CPPDEFINES' : ['USE_EABI_HARDFLOAT=1'],

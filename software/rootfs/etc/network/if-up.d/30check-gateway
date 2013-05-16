@@ -1,0 +1,129 @@
+#!/bin/sh
+# Check if the (default) gateway configured for the interface is 
+# present in our network
+#
+# This script should be installed in /etc/network/if-up.d/
+# It can also be used as a standalone script by setting up
+# its environment:
+#    IFACE=eth0 IF_GATEWAY=192.168.0.1 check-gateway
+#
+# NOTE: If IF_GATEWAY is not provided the script will try to test
+# the default gateway.
+#
+# TODO:
+#
+#   - Support non-default gateways that might have been set at the 
+#     same time the interface was enabled.
+#
+# ------------------------------------------------------------------------
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program; if not, write to the Free Software
+#   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#  
+# You can also find a copy of the GNU General Public License at
+# http://www.gnu.org/licenses/licenses.html#TOCLGPL
+# Check if an IP we are going to assign to an Ethernet interface
+# is already in use by another system.
+#
+
+# Read system default file
+[ -r /etc/default/network-test ] && . /etc/default/network-test
+
+# Defaults
+ARPING=/usr/bin/arping
+ETHTOOL=/sbin/ethtool
+[ ! -x "$ETHTOOL" ] && [ -x "/usr/sbin/ethtool" ] && ETHTOOL=/usr/sbin/ethtool
+ARP_COUNT=${ARP_COUNT:-2}
+ARP_TIMEOUT=${ARP_TIMEOUT:-3}
+DO_SYSLOG=${DO_SYSLOG:-yes}
+VERBOSITY=${VERBOSITY:-0}
+
+# Do not continue if ETHTOOL is not available
+[ ! -x "$ARPING" ] && exit 0
+# or if the user has told us to not do arpings
+[ "$DO_ARPING" = "no" ]  && exit 0
+
+# Break out if we don't have an interface to work with
+[ -z "$IFACE" ] && exit 0
+
+if [ "$DO_SYSLOG" = "yes" ] ; then
+	OUTPUT="logger -i -p daemon.err -s"
+else
+	OUTPUT="echo"
+fi
+
+# Try to obtain the IP address of our gateway (DHCP case)
+if [ -z "$IF_GATEWAY" ] ; then
+       IF_GATEWAY="`ip route list | grep \"^default \" | grep \"dev $IFACE\" | awk '{print $3}'`"
+        # Warn if there are multiple gateways
+        echo $IF_GATEWAY | grep -q " " && [ "$VERBOSITY" -eq 1 ] && $OUTPUT "Found multiple gateways as default routes for $IFACE"
+fi
+# Still no IP? Bail out
+[ -z "$IF_GATEWAY" ] && exit 0
+
+
+# Set up our environment
+LC_ALL=C
+export LC_ALL
+
+do_arping() {
+# Send ARP pings to detect if the default gateway is "out there"
+# Curiously enough, the script will return faster if there *is* a system
+# with the same IP address and will take ${ARP_TIMEOUT}*${ARP_COUNT} seconds
+# to return if there is none.
+
+# Do not do the check if ethtool (if installed) tells us the interface
+# does not have link, notice that ARPING will try to send the ARP requests
+# even if there is no link so we use this to speed things up
+
+        local GATEWAY=$1
+        local ARPING_OPTIONS="-q -c $ARP_COUNT -w $ARP_TIMEOUT -f -I $IFACE"
+        local GATEWAY_FOUND=1
+
+        if [ "`id -u`" = 0 ] ; then
+        # Only do this if we are root, otherwise assume the interface is
+        # up
+            	if [ -x "$ETHTOOL" ] ; then
+                    LINK="`$ETHTOOL $IFACE 2>&1| grep \"Link detected\"`"
+                    if ! $ETHTOOL $IFACE | grep -q "Link detected: yes" ; then
+                        return
+                    fi
+                fi
+        fi
+
+	[ "$VERBOSITY" -eq 1 ] && $OUTPUT "DEBUG: Sending arp pings through $IFACE to detect if the gateway $GATEWAY is present"
+        if [ "`id -u`" = 0 ] ; then
+            if $ARPING $ARPING_OPTIONS $GATEWAY ; then
+                GATEWAY_FOUND=0
+            fi
+        else
+        # If we are not root we can only use arping in DAD mode
+        # in this case we negate the check as it will return 1
+        # if there is an answer
+            if ! $ARPING $ARPING_OPTIONS -D  $GATEWAY ; then
+                GATEWAY_FOUND=0
+            fi
+        fi
+
+        if [ "$GATEWAY_FOUND" = 1 ] ; then
+                $OUTPUT "ERROR: Cannot find default gateway $GATEWAY in the network where $IFACE is connected to"
+	fi
+}
+
+# Check our IFACE name, if it does not start with eth, bail out
+case "$IFACE" in 
+	eth*) for gateway in $IF_GATEWAY ; do do_arping $gateway; done ;;
+	*) ;;
+esac
+exit 0

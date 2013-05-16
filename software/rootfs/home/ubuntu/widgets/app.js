@@ -1,63 +1,24 @@
 var express  = require('express'),
     http     = require('http'),
-    tty      = require('tty'),
-    optimist = require('optimist'),
-    os       = require('os'),
     robot    = require('ansync-robot'),
-    ansync   = require('ansync'),
+    ansync   = require('libvita'),
     socketio = require('socket.io'),
-    app      = module.exports = express(),
-    argv     = optimist
-                   .usage('Usage: an2006 [options]')
-                   .alias('p', 'port')
-                   .alias('h', '?')
-                   .alias('h', 'help')
-                   .alias('q', 'quiet')
-                   .alias('v', 'verbosity')
-                   .describe('p', 'Port to listen on.')
-                   .describe('q', 'Quiet.  Turns off logging.  Equivalent to -v 0.  Overrides -v.')
-                   .describe('v', 'Verbosity level. 0 = no logging, 3 = maximum logging.')
-                   .describe('h', 'Show this usage.')
-                   .default('p', 2000)
-                   .default('v', 0)
-                   .boolean('q')
-                   .check(function(argv) {
-                       if (typeof argv.p !== 'number' || parseFloat(argv.p) != parseInt(argv.p) || isNaN(argv.p) || argv.p < 80 || argv.p > 65534) {
-                           throw new Error('Invalid port: ' + argv.p + '.  Valid ports are 80 - 65534.');
-                       }
-                   })
-                   .argv;
+    spawn    = require('child_process').spawn,
+    fs       = require('fs'),
+    app      = module.exports = express();
 
-var config = {};
-var devices = {};
-var loglevel = 1;
-
-// Preflight init
-// Handle args
-if (argv.h) {
-    console.log(optimist.help());
-    process.exit();
-}
-
-if (argv.q) {
-    loglevel = 0;
-} else if (typeof argv.v === 'number' && parseFloat(argv.v) == parseInt(argv.v) && !isNaN(argv.v) && argv.v >= 0 && argv.v <= 3) {
-    loglevel = argv.v;
-}
-
-if (os.platform() == "win32") {
-    // Setup control-c handler for Windows
-    process.stdin.resume();
-    tty.setRawMode(true);
-}
+var robots = [];
 
 process.stdin.on('keypress', function(char, key) {
     if (key && key.ctrl && key.name == 'c') {
         console.log('Exiting . . . ');
-        ansync.quit(); // Unbind devices
+
+        closeDevices();
+
         process.exit();
     }
 });
+
 
 // Configuration
 app.configure(function() {
@@ -86,36 +47,93 @@ app.get('/', function(req, res, outPort) {
     res.render('index', { title: 'Ansync Widget Sandbox', serverUrl: req.headers.host.toString()});
 });
 
-var server = http.createServer(app).listen(argv.port, function() {
+var server = http.createServer(app).listen(2000, function() {
     console.log('Ansync Widget Sandbox listening on port %d in %s mode', server.address().port, app.settings.env);
 });
 
 server.on('error', function(err) {
     console.log('Server error: ' + err);
-    ansync.quit();
+    closeDevices();
     process.exit();
 });
 
 // Initialize SocketIO and Ansync
-var io = socketio.listen(server, {'log level': loglevel});
-ansync.init(app, io, {'log level': loglevel});
+var io = socketio.listen(server, {'log level': 1});
 
 //////////////////////////
 //'link' the robot module to the common express instance
-var i, robots = robot.link(app, express);
+robots = robot.link(app, express);
+
 for (robot_name in robots) {
     if (robots.hasOwnProperty(robot_name)) {
-        var foo = robots[robot_name];
-        for (i = 0; i < foo.boards.length; i +=1) {
-            foo.devices[i] = ansync.getDevice(foo.boards[i].serial, null, "AN2053");
-            if (foo.devices[i] instanceof Error) {
-                console.log(foo.devices[i].toString());
+        var bot = robots[robot_name];
+        var j = 0;
+
+        for (i = 0; i < bot.boards.length; i++) {
+            var boardString = "usb:" + bot.boards[i].class + "/";
+
+            if (bot.boards[i].serial) {
+                boardString += bot.boards[i].serial;
             }
+
+            ansync.open(boardString, function(err, board) {
+                if (err) {
+                    console.log(err);
+                } else {
+                    bot.devices[i] = board;
+
+                    if (bot.boards[i].type === "motor") {
+                        bot.motors[j] = board;
+                        j++;
+                    } else if (bot.boards[i].type === "sensor") {
+                        bot.sensors[bot.boards[i].name] = board;
+                    }
+                }
+            });
+
         }
+
+        robot.initSensors(bot);
     }
 }
 /////////////////////////
 
 io.sockets.on('connection', function(socket) {
-    ansync.bindSocket(socket);
+    setInterval(function() {
+        var signal;
+
+        fs.readFile("/proc/net/wireless", function(err, data) {
+            if (!err) {
+                var lines = data.toString().split('\n');
+                var mark = lines[2].indexOf('.');
+                var wifi = parseInt(lines[2].substring(mark - 3, mark), 10);
+
+                socket.emit('wifi', {signal: wifi});
+            }
+        });
+    }, 1000);
+
+    socket.on('sound', function() {
+        var index = Math.floor(Math.random() * (3 - 1 + 1)) + 1;
+
+        if (index == 1) {
+            spawn('aplay', ['/home/ubuntu/audio/sit.wav']);
+        } else if (index == 2) {
+            spawn('aplay', ['/home/ubuntu/audio/stay.wav']);
+        } else {
+            spawn('aplay', ['/home/ubuntu/audio/down.wav']);
+        }
+    });
 });
+
+function closeDevices() {
+    for (robot_name in robots) {
+        if (robots.hasOwnProperty(robot_name)) {
+            var robot = robots[robot_name];
+            for (var i = 0; i < robot.boards.length; i++) {
+                robot.devices[i].close();
+            }
+            robot.close();
+        }
+    }
+}

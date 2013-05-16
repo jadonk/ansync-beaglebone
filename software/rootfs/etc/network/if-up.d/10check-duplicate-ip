@@ -1,0 +1,134 @@
+#!/bin/sh
+#
+# Check if an IP we are going to assign to an Ethernet interface
+# is already in use by another system.
+#
+# This script should be installed in /etc/network/if-up.d/
+# if you want it to be used whenever an interface is configured.
+# 
+# It can also be used as a standalone script by setting up
+# its environment:
+#    IFACE=eth0 IF_ADDRESS=192.168.0.1 check-duplicate-ip 
+#
+# NOTE: IF_ADDRESS is optional, if not provided it will be determined
+# by using the ip tools
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program; if not, write to the Free Software
+#   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#  
+# You can also find a copy of the GNU General Public License at
+# http://www.gnu.org/licenses/licenses.html#TOCLGPL
+# Check if an IP we are going to assign to an Ethernet interface
+# is already in use by another system.
+#
+
+DEFAULT=/etc/default/network-test
+# Read system default file
+[ -r "$DEFAULT" ] && . $DEFAULT
+
+# Do not continue if the user has told us to not do arpings
+[ "$DO_ARPING" = "no" ]  && exit 0
+
+# Defaults
+ETHTOOL=/sbin/ethtool
+[ ! -x "$ETHTOOL" ] && [ -x "/usr/sbin/ethtool" ] && ETHTOOL=/usr/sbin/ethtool
+DO_SYSLOG=${DO_SYSLOG:-yes}
+VERBOSITY=${VERBOSITY:-0}
+# For arping:
+# Two possible arpings: iputils-arping or arping, with different
+# interpretation of the '-w' value 
+if [ -x /usr/bin/arping ] ; then
+    # We are going to use iputils-arping
+    ARPING=/usr/bin/arping
+    ARP_TIMEOUT=${ARP_TIMEOUT:-3} # Time here is measured in seconds
+    ARPING_EXTRAOPTS="-q"         # Use -q(uiet) in iputil's arping
+else
+    if [ -x /usr/sbin/arping ] ; then
+        ARPING=/usr/sbin/arping
+        ARP_TIMEOUT=${ARP_TIMEOUT:-1500} # Time here is measures in milliseconds
+        # experiments show anything less than 1500 is unreliable.
+        ARPING_EXTRAOPTS=">/dev/null" # No '-q' option in arping's arping
+    else
+        # Do not continue if ARPING is not available
+        echo "WARNING: Cannot check for duplicate IP address in the network. The script cannot find the 'arping' program (tried /usr/bin/arping and /usr/sbin/arping. Please either install the iputils-arping or arping packages or disable this test by setting DO_ARPING to 'no' in $DEFAULT ." >&2
+        exit 0
+    fi
+fi
+ARP_COUNT=${ARP_COUNT:-2}
+
+# Set up our environment
+LC_ALL=C
+export LC_ALL
+
+if [ "$DO_SYSLOG" = "yes" ] ; then
+	OUTPUT="logger -i -p daemon.err -s"
+else
+	OUTPUT="echo"
+fi
+
+do_arping() {
+# Send ARP pings to detect if there is a duplicate address "out there"
+# Curiously enough, the script will return faster if there *is* a system
+# with the same IP address and will take ${ARP_TIMEOUT}*${ARP_COUNT} seconds
+# to return if there is none.
+
+# Do not do the check if ethtool (if installed) tells us the interface
+# does not have link, notice that ARPING will try to send the ARP requests
+# even if there is no link so we use this to speed things up
+
+# First determine physical interface in case aliased interfaces are used
+        real_iface=`echo $IFACE | sed -e 's|:[[:digit:]]\+||'`
+	if [ -x "$ETHTOOL" ] ; then
+	        LINK="`$ETHTOOL $real_iface 2>&1| grep \"Link[[:blank:]]\+detected:\"`"
+	        if ! echo $LINK | grep -q "yes$" ; then
+			return
+		fi
+	fi
+
+	for ADDR in $IF_ADDRESS; do
+		[ "$VERBOSITY" -eq 1 ] && $OUTPUT "DEBUG: Sending arp pings through $real_iface (for $IFACE) to detect other systems using $ADDR"
+                $ARPING -c $ARP_COUNT -w $ARP_TIMEOUT -D -I $real_iface $ADDR $ARPING_EXTRAOPTS
+		if [ $? -ne 0 ] ; then
+                    $OUTPUT "ERROR: Duplicate address $ADDR assigned in the network where $real_iface is connected to."
+		fi
+	done
+}
+
+find_ip() {
+# Try to obtain our IP address (DHCP case)
+       export IF_ADDRESS
+       IF_ADDRESS="`ip addr show $IFACE | sed -rne 's|^[[:blank:]]*inet[[:blank:]]+([^/]+)/.*|\1|p'`"
+       return 0
+}
+
+if [ -z "$IFACE" ] ; then
+    echo "ERROR: Do not know what interface to check. IFACE environment variable is not defined!" >&2
+    exit 1
+fi
+
+
+# Check our IFACE name, if it does not start with eth, bail out
+case "$IFACE" in 
+	eth*) 
+        [ -z "$IF_ADDRESS" ] && find_ip
+        # Still no IP? Bail out
+        if [ -z "$IF_ADDRESS" ] ; then
+            echo "WARNING: Cannot check for duplicate IP address in the network as the script could not find the ip address of $IFACE. You can disable this test by setting DO_ARPING to 'no' in $DEFAULT ." >&2
+            exit 0
+        fi
+        do_arping ;;
+	*) ;;
+esac
+
+exit 0
